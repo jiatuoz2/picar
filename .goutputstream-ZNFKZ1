@@ -1,0 +1,12 @@
+import advanced_scan_step
+import numpy as np
+
+int main():
+	map = np.zeros((50, 50))
+	advanced_scan_step(map)
+
+if __name__ == "__main__":
+    try: 
+        main()
+    finally: 
+        fc.stop()
