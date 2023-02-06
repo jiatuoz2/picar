@@ -1,121 +1,170 @@
 import advanced_mapping as am
 import picar_4wd as fc
 import numpy as np
-import heapq
 import time
+from math import sqrt
+from vision import run
 
-def neighbors(current):
-	neighbors = []
-	offset = [(0, 1), (0, -1), (-1, 0), (1, 0)]
-	for i in range(4):
-		neighbors.append((current[0] + offset[i][0], current[1] + offset[i][1]))
-	return neighbors
-	
-def heuristic(goal, start):
-	return abs(goal[0] - start[0]) + abs(goal[1] - start[1])
-	
 
-def path_find(start, goal, map):
-	frontier = [(0, start)] 
-	heapq.heapify(frontier)
-	came_from = {}
-	cost_so_far = {}
-	came_from[start] = "None"
-	cost_so_far[start] = 0
-	
-	while len(frontier) > 0:
-		current = heapq.heappop(frontier)[1]
-		
-		if current == goal:
-			break
-		
-		for neighbor in neighbors(current):
-			if neighbor[0] >= 0 and neighbor[0] < 100 and neighbor[1] < 100 and neighbor[1] >= 0 and map[neighbor[0]][neighbor[1]] == 0:
-				new_cost = cost_so_far[current] + 1
-				if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
-					cost_so_far[neighbor] = new_cost
-					priority = new_cost + heuristic(goal, neighbor)
-					heapq.heappush(frontier, (priority, neighbor))
-					came_from[neighbor] = current
-	# after finding the goal, retrack for the path
-	path = []
-	current = goal
-	while current != start:
-		prev = came_from[current]
-		path.append((current[0] - prev[0], current[1] - prev[1]))
-		current = prev
-	path.reverse()
-	return path
-	
+def A_star(start, goal, map):
+    closed_set = set()
+    open_set = {start}
+    came_from = {}
+
+    g_score = {}
+    h_score = {}
+    f_score = {}
+
+    g_score[start] = 0
+    h_score[start] = euclidean_distance(start, goal)
+    f_score[start] = h_score[start]
+
+    while open_set != set():
+        x = list(open_set)[0]
+        tmp = f_score[x]
+        for node in open_set:
+            if f_score[node] < tmp:
+                x = node
+                tmp = f_score[node]
+
+        if x == goal:
+            return reconstruct_path(came_from, start, goal)
+        open_set.remove(x)
+
+        closed_set.add(x)
+
+        for y in neighbor_nodes(x):
+            if y in closed_set or (y[0] > 99 or y[1] > 99 or y[0] < 0 or y[1] < 0) or map[y[0]][y[1]] == 1:
+                continue
+            tentative_g_score = g_score[x] + euclidean_distance(x, y)
+
+            if y not in open_set:
+                tentative_is_better = True
+            elif tentative_g_score < g_score[y]:
+                tentative_is_better = True
+            else:
+                tentative_is_better = False
+
+            if tentative_is_better:
+                came_from[y] = x
+                g_score[y] = tentative_g_score
+                h_score[y] = euclidean_distance(y, goal)
+                f_score[y] = g_score[y] + h_score[y]
+                open_set.add(y)
+
+    return []
+
+
+def reconstruct_path(came_from, start, goal):
+    result = []
+    current = goal
+
+    while current != start:
+        result.append(current)
+        current = came_from[current]
+
+    # result.append(start)
+    result.reverse()
+
+    n = len(result) - 1
+
+    operations = []
+    for t in result:
+        operations.append([t[0], t[1]])
+
+    while n > 0:
+        operations[n][0] -= operations[n-1][0]
+        operations[n][1] -= operations[n-1][1]
+        n -= 1
+
+    operations[0][0] -= start[0]
+    operations[0][1] -= start[1]
+    print(operations)
+    return operations
+
+
+def euclidean_distance(start, goal):
+    return sqrt((start[0] - goal[0]) * (start[0] - goal[0]) + (start[1] - goal[1]) * (start[1] - goal[1]))
+
+
+def neighbor_nodes(node):
+    up = (node[0], node[1] + 1)
+    down = (node[0], node[1] - 1)
+    left = (node[0] - 1, node[1])
+    right = (node[0] + 1, node[1])
+    return {up, down, left, right}
+
 
 def main():
-	goal = (65, 20)
-	map = np.zeros((100, 100))
+	goal = (50, 99)
 	current = (50, 0)
 	direction = "forward"
 	while True:
-		fc.servo.set_angle(-90)
+		fc.stop()
+		run()
+		map = np.zeros((100, 100))
 		map = am.advanced_scan_step(map)
 		goal = (goal[0] - current[0] + 50, goal[1] - current[1] + 0)
 		current = (50, 0)
-		path = path_find((50, 0), goal, map)
+		path = A_star((50, 0), goal, map)
 		# only walk for 5 steps
-		for i in range(5):
+		for i in range(20):
 			if i >= len(path):
 				break
-			if path[i] == (0, 1):
+			if path[i] == [0, 1]:
 				if direction == "left":
-					fc.turn_right(10)
-					time.sleep(1)
+					fc.turn_right(20)
+					time.sleep(0.85)
 				elif direction == "right":
-					fc.turn_left(10)
-					time.sleep(1)
+					fc.turn_left(20)
+					time.sleep(0.95)
 				elif direction == "backward":
-					fc.turn_left(10)
-					time.sleep(2)
+					fc.turn_left(20)
+					time.sleep(1.9)
 				direction = "forward"
 				fc.forward(10)
-				time.sleep(0.1)
-			elif path[i] == (0, -1):
+				time.sleep(0.05)
+			elif path[i] == [0, -1]:
 				if direction == "left":
-					fc.turn_left(10)
-					time.sleep(1)
+					fc.turn_left(20)
+					time.sleep(0.95)
 				elif direction == "right":
-					fc.turn_right(10)
-					time.sleep(1)
+					fc.turn_right(20)
+					time.sleep(0.85)
 				elif direction == "forward":
-					fc.turn_left(10)
-					time.sleep(2)
+					fc.turn_left(20)
+					time.sleep(1.9)
 				direction = "backward"
 				fc.forward(10)
-				time.sleep(0.1)
-			elif path[i] == (1, 0):
+				time.sleep(0.05)
+			elif path[i] == [1, 0]:
 				if direction == "left":
-					fc.turn_left(10)
-					time.sleep(2)
+					fc.turn_left(20)
+					time.sleep(1.9)
 				elif direction == "backward":
-					fc.turn_left(10)
-					time.sleep(1)
+					fc.turn_left(20)
+					time.sleep(0.95)
 				elif direction == "forward":
-					fc.turn_right(10)
-					time.sleep(1)
+					fc.turn_right(20)
+					time.sleep(0.85)
 				direction = "right"
 				fc.forward(10)
-				time.sleep(0.1)
+				time.sleep(0.20)
 			else:
 				if direction == "backward":
-					fc.turn_right(10)
-					time.sleep(1)
+					fc.turn_right(20)
+					time.sleep(0.85)
 				elif direction == "right":
-					fc.turn_right(10)
-					time.sleep(2)
+					fc.turn_right(20)
+					time.sleep(1.7)
 				elif direction == "forward":
-					fc.turn_left(10)
-					time.sleep(1)
+					fc.turn_left(20)
+					time.sleep(0.95)
 				direction = "left"
 				fc.forward(10)
-				time.sleep(0.1)
+				time.sleep(0.20)
 			current = (current[0] + path[i][0], current[1] + path[i][1])
+			print(current)
 		if goal == current:
 			print("stop now")
 			break
